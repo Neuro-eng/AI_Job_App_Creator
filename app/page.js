@@ -118,7 +118,7 @@ export default function Home() {
         </div>
       )}
 
-      <footer>Built with Next.js + Claude API</footer>
+      <footer>Built with Next.js + Gemini API</footer>
     </div>
   );
 }
