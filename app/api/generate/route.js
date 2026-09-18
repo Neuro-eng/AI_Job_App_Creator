@@ -9,10 +9,11 @@ export async function POST(request) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!geminiKey && !groqKey) {
       return Response.json(
-        { error: "Server is missing GEMINI_API_KEY. Add it in your hosting provider's environment variables." },
+        { error: "Server is missing GEMINI_API_KEY (and optionally GROQ_API_KEY as backup). Add at least one in your hosting provider's environment variables." },
         { status: 500 }
       );
     }
@@ -39,31 +40,91 @@ TARGET JOB DESCRIPTION:
 ${jobDescription}`;
 
     const model = "gemini-3.6-flash";
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+    const geminiBody = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+      },
+    });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Gemini API error:", errText);
-      return Response.json(
-        { error: "The AI service failed to respond. Please try again." },
-        { status: 502 }
-      );
+    async function callGeminiWithRetry(maxAttempts = 3) {
+      let lastErrText = "";
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const res = await fetch(geminiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: geminiBody,
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          return text;
+        }
+
+        lastErrText = await res.text();
+        console.error(`Gemini API error (attempt ${attempt}/${maxAttempts}):`, lastErrText);
+
+        const retryable = res.status === 503 || res.status === 429;
+        if (!retryable || attempt === maxAttempts) {
+          throw new Error(lastErrText);
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+      }
     }
 
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    async function callGroqFallback() {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("Groq fallback error:", errText);
+        throw new Error(errText);
+      }
+
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || "";
+    }
+
+    let rawText;
+    try {
+      if (geminiKey) {
+        rawText = await callGeminiWithRetry();
+      } else {
+        rawText = await callGroqFallback();
+      }
+    } catch (primaryErr) {
+      // Primary provider failed after retries — try the backup provider if one is configured
+      if (groqKey && geminiKey) {
+        try {
+          console.error("Falling back to Groq after Gemini failure.");
+          rawText = await callGroqFallback();
+        } catch (fallbackErr) {
+          return Response.json(
+            { error: "The AI service is temporarily busy. Please try again in a moment." },
+            { status: 502 }
+          );
+        }
+      } else {
+        return Response.json(
+          { error: "The AI service is temporarily busy. Please try again in a moment." },
+          { status: 502 }
+        );
+      }
+    }
 
     let parsed;
     try {
