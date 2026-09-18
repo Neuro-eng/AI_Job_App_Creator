@@ -21,6 +21,10 @@ export async function POST(request) {
     const prompt = `You are an expert career coach and resume writer who has helped candidates land offers at top companies. Given a candidate's existing CV and a target job description, produce a JSON object with exactly these keys:
 
 - "ats_cv": a rewritten, ATS-friendly CV tailored to the job description. Follow these rules strictly:
+  - The VERY FIRST line must be the candidate's full name exactly as it appears in their original CV, and nothing else on that line.
+  - The SECOND line must be their target job title (matching the role they're applying for).
+  - The THIRD line must be their contact details in this exact format: phone | email | location — using "|" as the separator, pulling these directly from the original CV.
+  - Leave one blank line, then continue with the SUMMARY section header.
   - Every bullet point should follow an "action + context + result" shape (what you did, in what situation, with what measurable outcome), so the candidate can naturally turn each line into a 20-30 second interview story.
   - Start each bullet with a strong, varied action verb (Led, Automated, Reduced, Architected, Resolved, Streamlined, etc.) — never repeat the same starting verb more than twice across the whole CV.
   - Wherever the original CV implies scale, frequency, or impact (number of endpoints, servers, patch cycles, compliance %, team size, time saved), make it explicit with a number, even an estimated reasonable range. Do not fabricate numbers that contradict the original CV, but do surface any quantifiable detail buried in vague phrasing.
