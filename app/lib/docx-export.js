@@ -49,7 +49,27 @@ export function buildCvDocument(rawText) {
       continue;
     }
 
-    // First real line = candidate name
+    // Safety check: if this line is itself a known section heading, never
+    // treat it as name/title/contact — jump straight to heading handling,
+    // and lock name/title/contact detection off from this point forward.
+    if (isSectionHeading(trimmed)) {
+      nameSet = true;
+      contactSet = true;
+      children.push(
+        new Paragraph({
+          spacing: { before: 280, after: 120 },
+          border: {
+            bottom: { style: BorderStyle.SINGLE, size: 4, color: "1A1A1A", space: 2 },
+          },
+          children: [
+            new TextRun({ text: trimmed.toUpperCase(), bold: true, size: 24, color: "1A1A1A" }),
+          ],
+        })
+      );
+      continue;
+    }
+
+    // First real line (and not a heading) = candidate name
     if (!nameSet) {
       children.push(
         new Paragraph({
@@ -64,7 +84,7 @@ export function buildCvDocument(rawText) {
       continue;
     }
 
-    // Contact / title line right after the name (contains @ or | or a phone-like pattern)
+    // Contact line (contains @ or | or starts with a phone-like pattern)
     if (!contactSet && (trimmed.includes("|") || trimmed.includes("@") || /^\+?\d/.test(trimmed))) {
       children.push(
         new Paragraph({
@@ -80,28 +100,14 @@ export function buildCvDocument(rawText) {
       continue;
     }
 
-    // Role/title line (appears right after name, before contact line)
-    if (nameSet && !contactSet && i <= 2) {
+    // Role/title line — only ever the single line right after the name,
+    // before a contact line has appeared.
+    if (nameSet && !contactSet && !isBullet(trimmed)) {
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { after: 80 },
           children: [new TextRun({ text: trimmed, size: 24, color: "3B6FED", bold: true })],
-        })
-      );
-      continue;
-    }
-
-    if (isSectionHeading(trimmed)) {
-      children.push(
-        new Paragraph({
-          spacing: { before: 280, after: 120 },
-          border: {
-            bottom: { style: BorderStyle.SINGLE, size: 4, color: "1A1A1A", space: 2 },
-          },
-          children: [
-            new TextRun({ text: trimmed.toUpperCase(), bold: true, size: 24, color: "1A1A1A" }),
-          ],
         })
       );
       continue;
